@@ -50,6 +50,7 @@ export function DepthScanner({
   const [saving, setSaving] = useState(false);
   const [scanActive, setScanActive] = useState(false);
   const [hasSensors, setHasSensors] = useState(false);
+  const [coverage, setCoverage] = useState(0);
 
   useEffect(() => {
     detectXRCapabilities().then(setCaps);
@@ -65,7 +66,7 @@ export function DepthScanner({
   }, []);
 
   const onMotion = useCallback((e: DeviceMotionEvent) => {
-    const a = e.accelerationIncludingGravity;
+    const a = e.acceleration ?? e.accelerationIncludingGravity;
     if (!a) return;
     scannerRef.current?.setMotion({ x: a.x ?? 0, y: a.y ?? 0, z: a.z ?? 0 });
   }, []);
@@ -102,9 +103,9 @@ export function DepthScanner({
 
       setStatus("scanning");
       setScanActive(true);
-      setMessage(
-        "Mova o celular lentamente pela sala. Os pontos 3D são criados pela câmera e pelo giroscópio."
-      );
+        setMessage(
+          "1) Aponte para uma parede · 2) Gire 360° devagar · 3) Dê alguns passos. Assim o mapa preenche a sala inteira."
+        );
 
       const loop = () => {
         const s = scannerRef.current;
@@ -112,6 +113,7 @@ export function DepthScanner({
         if (s) {
           setStats(s.getStats());
           if (s.hasSensorData) setHasSensors(true);
+          setCoverage(s.getCoveragePercent());
         }
         rafRef.current = requestAnimationFrame(loop);
       };
@@ -232,16 +234,22 @@ export function DepthScanner({
             <div className="text-zinc-500">pontos</div>
           </div>
           <div className="rounded-lg bg-zinc-800/80 p-2">
-            <div className="text-lg font-semibold text-sky-400">{stats.framesSampled}</div>
-            <div className="text-zinc-500">frames</div>
+            <div className="text-lg font-semibold text-sky-400">{coverage}%</div>
+            <div className="text-zinc-500">giro 360°</div>
           </div>
           <div className="rounded-lg bg-zinc-800/80 p-2">
             <div className="text-lg font-semibold text-amber-400">
-              {hasSensors ? "sim" : "aguarde"}
+              {hasSensors ? "ok" : "…"}
             </div>
             <div className="text-zinc-500">sensores</div>
           </div>
         </div>
+
+        {scanActive && coverage < 40 && (
+          <p className="text-xs text-amber-200/90">
+            Gire mais o celular ao redor do corpo (meta: 60%+ no medidor de giro).
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-2">
           {status !== "scanning" && status !== "starting" ? (
