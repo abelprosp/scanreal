@@ -35,7 +35,7 @@ export function EnvironmentList() {
       <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/30 p-8 text-center">
         <p className="text-zinc-400">Nenhum ambiente mapeado ainda.</p>
         <p className="mt-1 text-sm text-zinc-500">
-          Use &quot;Novo mapa&quot; no celular com Chrome/Android para melhor suporte AR.
+          Use &quot;Novo mapa&quot; no iPhone ou Android — permita câmera e sensores de movimento.
         </p>
       </div>
     );

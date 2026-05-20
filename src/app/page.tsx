@@ -13,18 +13,16 @@ export default function HomePage() {
             Mapeamento de ambientes no navegador
           </h1>
           <p className="mt-3 max-w-2xl text-lg text-zinc-400">
-            Escaneie casas, lojas ou salas com a câmera do celular usando{" "}
-            <strong className="text-zinc-200">A-Frame</strong>,{" "}
-            <strong className="text-zinc-200">Three.js</strong> e a{" "}
-            <strong className="text-zinc-200">WebXR Depth API</strong>.
-            Navegue pelo mapa 3D salvo direto no browser — leve e sem app nativo.
+            Escaneie casas, lojas ou salas com a <strong className="text-zinc-200">câmera do celular</strong>.
+            Funciona em <strong className="text-zinc-200">iPhone e Android</strong> (Chrome, Safari).
+            Visualize o mapa 3D com <strong className="text-zinc-200">Three.js</strong> — sem instalar app.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
               href="/scan"
               className="rounded-xl bg-emerald-600 px-5 py-3 font-medium text-white hover:bg-emerald-500"
             >
-              Criar novo mapa AR
+              Criar novo mapa
             </Link>
           </div>
         </section>
@@ -34,13 +32,13 @@ export default function HomePage() {
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-400">
             <h2 className="font-medium text-zinc-200">Como funciona</h2>
             <ol className="mt-2 list-decimal space-y-1 pl-5">
-              <li>Abra no celular com HTTPS (ou localhost em dev).</li>
-              <li>Inicie a sessão AR e mova o dispositivo pelo ambiente.</li>
-              <li>Pontos 3D são acumulados via Depth API (ou estimativa).</li>
-              <li>Salve e navegue no visualizador Three.js no desktop ou mobile.</li>
+              <li>Abra no celular pelo link HTTPS da Vercel.</li>
+              <li>Toque em Iniciar câmera e permita câmera + movimento.</li>
+              <li>Ande lentamente pelo ambiente com o celular na mão.</li>
+              <li>Salve e navegue no mapa 3D em qualquer dispositivo.</li>
             </ol>
-            <p className="mt-3 text-xs text-amber-200/80">
-              Limitação: suporte de profundidade varia muito por aparelho/navegador.
+            <p className="mt-3 text-xs text-emerald-200/80">
+              Android com Chrome pode ter AR avançado (WebXR); iPhone usa câmera + giroscópio.
             </p>
           </div>
         </section>

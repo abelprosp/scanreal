@@ -22,7 +22,11 @@ export function EnvironmentCard({ env }: { env: MappedEnvironment }) {
           </p>
         </div>
         <span className="rounded-full bg-zinc-800 px-2 py-1 text-xs text-zinc-400">
-          {env.depthMode === "none" ? "sem depth" : env.depthMode}
+          {env.depthMode === "motion"
+            ? "câmera+motion"
+            : env.depthMode === "none"
+              ? "estimativa"
+              : env.depthMode}
         </span>
       </div>
       <p className="mt-2 text-sm text-zinc-400">

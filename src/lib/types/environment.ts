@@ -1,6 +1,7 @@
 export type EnvironmentKind = "casa" | "loja" | "ambiente";
 
-export type DepthMode = "cpu" | "gpu" | "none";
+/** cpu/gpu = WebXR Depth; motion = câmera + giroscópio; none = estimativa AR */
+export type DepthMode = "cpu" | "gpu" | "motion" | "none";
 
 export interface PointCloudBounds {
   min: [number, number, number];

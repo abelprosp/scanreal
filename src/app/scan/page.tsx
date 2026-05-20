@@ -97,7 +97,7 @@ export default function ScanPage() {
             type="submit"
             className="w-full rounded-xl bg-emerald-600 py-3 font-medium text-white hover:bg-emerald-500"
           >
-            Continuar para scanner AR
+            Continuar para scanner
           </button>
         </form>
       </main>
