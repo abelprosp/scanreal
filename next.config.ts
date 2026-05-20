@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  /* A-Frame carregado apenas no cliente via dynamic import */
 };
 
 export default nextConfig;
