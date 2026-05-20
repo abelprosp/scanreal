@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { DepthMode } from "@/lib/types/environment";
 
-const MAX_POINTS = 100_000;
+const MAX_POINTS = 150_000;
 
 export class DepthPointAccumulator {
   private positions: number[] = [];
@@ -24,7 +24,7 @@ export class DepthPointAccumulator {
     this.depthMode = "none";
   }
 
-  private addPoint(x: number, y: number, z: number, precision = 25): boolean {
+  private addPoint(x: number, y: number, z: number, precision = 22): boolean {
     if (this.positions.length / 3 >= MAX_POINTS) return false;
 
     const key = `${Math.round(x * precision)}|${Math.round(y * precision)}|${Math.round(z * precision)}`;
@@ -35,16 +35,13 @@ export class DepthPointAccumulator {
     return true;
   }
 
-  /**
-   * Preenche volume tipo sala: várias distâncias + chão ao redor da câmera.
-   * Evita o efeito "cortina" de um único plano.
-   */
+  /** Volume denso à frente da câmera + chão + teto */
   sampleRoomVolume(camera: THREE.PerspectiveCamera): number {
     let added = 0;
 
-    const depths = [0.4, 0.7, 1.0, 1.4, 1.9, 2.5, 3.2, 4.0, 5.0];
-    const cols = 14;
-    const rows = 10;
+    const depths = [0.35, 0.55, 0.8, 1.1, 1.5, 2.0, 2.6, 3.3, 4.2, 5.5, 6.5];
+    const cols = 18;
+    const rows = 12;
 
     for (const depthM of depths) {
       for (let row = 0; row < rows; row++) {
@@ -52,7 +49,7 @@ export class DepthPointAccumulator {
           const u = (col + 0.5) / cols;
           const v = (row + 0.5) / rows;
           const world = this.uvDepthToWorld(u, v, depthM, camera);
-          if (world && this.addPoint(world.x, world.y, world.z, 22)) added++;
+          if (world && this.addPoint(world.x, world.y, world.z, 20)) added++;
         }
       }
     }
@@ -61,21 +58,55 @@ export class DepthPointAccumulator {
     const cx = camera.position.x;
     const cz = camera.position.z;
 
-    for (let x = -4; x <= 4; x += 0.35) {
-      for (let z = -4; z <= 4; z += 0.35) {
-        if (x * x + z * z > 16) continue;
-        if (this.addPoint(cx + x, floorY, cz + z, 18)) added++;
+    for (let x = -5; x <= 5; x += 0.28) {
+      for (let z = -5; z <= 5; z += 0.28) {
+        if (x * x + z * z > 28) continue;
+        if (this.addPoint(cx + x, floorY, cz + z, 16)) added++;
       }
     }
 
-    const ceilY = camera.position.y + 0.25;
-    for (let x = -2.5; x <= 2.5; x += 0.5) {
-      for (let z = -2.5; z <= 2.5; z += 0.5) {
-        if (this.addPoint(cx + x, ceilY, cz + z, 20)) added++;
+    const ceilY = camera.position.y + 0.35;
+    for (let x = -3.5; x <= 3.5; x += 0.4) {
+      for (let z = -3.5; z <= 3.5; z += 0.4) {
+        if (this.addPoint(cx + x, ceilY, cz + z, 18)) added++;
       }
     }
 
     this.framesSampled += 1;
+    return added;
+  }
+
+  /** Paredes laterais e frontal em arco (completa o perímetro) */
+  samplePerimeterArc(camera: THREE.PerspectiveCamera): number {
+    let added = 0;
+    const cx = camera.position.x;
+    const cy = camera.position.y;
+    const cz = camera.position.z;
+
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
+      camera.quaternion
+    );
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+
+    const distances = [1.5, 2.2, 3.0, 4.0];
+    const heights = [-0.8, -0.2, 0.5, 1.2, 1.9];
+
+    for (const dist of distances) {
+      for (const h of heights) {
+        for (let t = -1; t <= 1; t += 0.25) {
+          const offset = new THREE.Vector3()
+            .addScaledVector(forward, dist)
+            .addScaledVector(right, t * dist * 0.85);
+          offset.y = h;
+          if (
+            this.addPoint(cx + offset.x, cy + offset.y, cz + offset.z, 18)
+          ) {
+            added++;
+          }
+        }
+      }
+    }
+
     return added;
   }
 
@@ -110,7 +141,7 @@ export class DepthPointAccumulator {
     const w = depthInfo.width;
     const h = depthInfo.height;
     let added = 0;
-    const step = 10;
+    const step = 8;
 
     for (let row = 0; row < h; row += step) {
       for (let col = 0; col < w; col += step) {
@@ -124,7 +155,7 @@ export class DepthPointAccumulator {
         }
         if (!Number.isFinite(depthM) || depthM <= 0.05 || depthM > 12) continue;
         const world = this.uvDepthToWorld(u, v, depthM, camera);
-        if (world && this.addPoint(world.x, world.y, world.z, 35)) added++;
+        if (world && this.addPoint(world.x, world.y, world.z, 32)) added++;
       }
     }
     return added;
@@ -134,8 +165,15 @@ export class DepthPointAccumulator {
     if (this.depthMode === "none") this.depthMode = "gpu";
   }
 
+  /** Captura completa para IA: volume + perímetro */
+  sampleFullStation(camera: THREE.PerspectiveCamera): number {
+    let a = this.sampleRoomVolume(camera);
+    a += this.samplePerimeterArc(camera);
+    return a;
+  }
+
   sampleCameraFallback(camera: THREE.PerspectiveCamera): number {
-    return this.sampleRoomVolume(camera);
+    return this.sampleFullStation(camera);
   }
 
   private uvDepthToWorld(

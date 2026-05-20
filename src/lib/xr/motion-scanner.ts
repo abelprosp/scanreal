@@ -1,16 +1,15 @@
 import * as THREE from "three";
 import { DepthPointAccumulator } from "@/lib/xr/depth-sampler";
-import type { DepthMode, ScanStats } from "@/lib/types/environment";
+import { analyzeScanQuality } from "@/lib/scan/quality";
+import type { DepthMode, ScanQuality, ScanStats } from "@/lib/types/environment";
 
 function angleDelta(a: number, b: number): number {
   let d = Math.abs(a - b) % 360;
   return d > 180 ? 360 - d : d;
 }
 
-/**
- * Mapeamento universal: câmera + giroscópio + deslocamento.
- * Amostra em "estações" ao girar ou andar — preenche volume da sala.
- */
+const STATION_STEP = 12;
+
 export class MotionScanner {
   private readonly accumulator = new DepthPointAccumulator();
   private readonly euler = new THREE.Euler(0, 0, 0, "YXZ");
@@ -22,10 +21,12 @@ export class MotionScanner {
 
   private lastMotionTime = 0;
   private lastAlpha = 0;
+  private lastStationAlpha = -999;
   private hasOrientation = false;
   private frameCount = 0;
   private coverageMinAlpha = 360;
   private coverageMaxAlpha = 0;
+  private stationsCaptured = 0;
 
   orientation = { alpha: 0, beta: 90, gamma: 0 };
 
@@ -37,9 +38,11 @@ export class MotionScanner {
     this.hasOrientation = false;
     this.lastMotionTime = 0;
     this.lastAlpha = 0;
+    this.lastStationAlpha = -999;
     this.frameCount = 0;
     this.coverageMinAlpha = 360;
     this.coverageMaxAlpha = 0;
+    this.stationsCaptured = 0;
   }
 
   setOrientation(
@@ -64,7 +67,6 @@ export class MotionScanner {
     this.quaternion.setFromEuler(this.euler);
   }
 
-  /** Usa aceleração sem gravidade (melhor no iOS) */
   setMotion(acceleration: { x: number; y: number; z: number } | null): void {
     if (!acceleration) return;
 
@@ -79,13 +81,13 @@ export class MotionScanner {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.quaternion);
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.quaternion);
 
-    const scale = 0.35;
+    const scale = 0.4;
     this.velocity.addScaledVector(forward, -(acceleration.z ?? 0) * scale * dt);
     this.velocity.addScaledVector(right, (acceleration.x ?? 0) * scale * dt);
-    this.velocity.y += (acceleration.y ?? 0) * scale * dt * 0.3;
+    this.velocity.y += (acceleration.y ?? 0) * scale * dt * 0.35;
 
-    this.velocity.multiplyScalar(0.88);
-    this.position.addScaledVector(this.velocity, dt * 6);
+    this.velocity.multiplyScalar(0.86);
+    this.position.addScaledVector(this.velocity, dt * 7);
   }
 
   tick(): void {
@@ -96,30 +98,47 @@ export class MotionScanner {
     this.virtualCamera.updateMatrixWorld(true);
 
     const alpha = this.orientation.alpha;
-    const rotated = angleDelta(alpha, this.lastAlpha) > 7;
-    const moved = this.position.distanceTo(this.lastSamplePos) > 0.2;
-    const periodic = this.frameCount % 12 === 0;
+    const beta = this.orientation.beta;
 
-    if (rotated || moved || periodic) {
+    const stationDue =
+      this.lastStationAlpha < -100 ||
+      angleDelta(alpha, this.lastStationAlpha) >= STATION_STEP;
+
+    const moved = this.position.distanceTo(this.lastSamplePos) > 0.15;
+    const periodic = this.frameCount % 8 === 0;
+
+    if (stationDue) {
+      this.accumulator.sampleFullStation(this.virtualCamera);
+      this.accumulator.depthMode = "motion";
+      this.lastStationAlpha = alpha;
+      this.stationsCaptured += 1;
+      this.lastSamplePos.copy(this.position);
+      this.lastAlpha = alpha;
+    } else if (moved || periodic) {
       this.accumulator.sampleRoomVolume(this.virtualCamera);
       this.accumulator.depthMode = "motion";
-      this.lastAlpha = alpha;
       this.lastSamplePos.copy(this.position);
     }
   }
 
-  /** 0–100: quanto o usuário já girou o celular (panorama) */
   getCoveragePercent(): number {
     if (!this.hasOrientation) return 0;
     let span = this.coverageMaxAlpha - this.coverageMinAlpha;
     if (span < 0) span += 360;
-    return Math.min(100, Math.round((span / 180) * 100));
+    return Math.min(100, Math.round((span / 300) * 100));
+  }
+
+  getQuality(): ScanQuality {
+    return analyzeScanQuality(
+      this.accumulator.toFloat32Array(),
+      this.getCoveragePercent()
+    );
   }
 
   getStats(): ScanStats {
     return {
       pointCount: this.accumulator.pointCount,
-      depthMode: "motion",
+      depthMode: "motion" as DepthMode,
       depthSupported: false,
       framesSampled: this.accumulator.frames,
     };
@@ -127,6 +146,10 @@ export class MotionScanner {
 
   getPoints(): Float32Array {
     return this.accumulator.toFloat32Array();
+  }
+
+  get stations(): number {
+    return this.stationsCaptured;
   }
 
   get hasSensorData(): boolean {

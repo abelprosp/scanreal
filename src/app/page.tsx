@@ -32,13 +32,13 @@ export default function HomePage() {
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-400">
             <h2 className="font-medium text-zinc-200">Como funciona</h2>
             <ol className="mt-2 list-decimal space-y-1 pl-5">
-              <li>Abra no celular pelo link HTTPS da Vercel.</li>
-              <li>Toque em Iniciar câmera e permita câmera + movimento.</li>
-              <li>Ande lentamente pelo ambiente com o celular na mão.</li>
-              <li>Salve e navegue no mapa 3D em qualquer dispositivo.</li>
+              <li>Escaneie com giro 360° + passos pelo ambiente.</li>
+              <li>Aguarde a barra de qualidade para IA ficar verde (65%+).</li>
+              <li>Revise 3D, planta, frente e lateral.</li>
+              <li>Exporte o JSON e envie à sua IA para avaliação.</li>
             </ol>
             <p className="mt-3 text-xs text-emerald-200/80">
-              Android com Chrome pode ter AR avançado (WebXR); iPhone usa câmera + giroscópio.
+              iPhone e Android suportados — câmera + sensores de movimento.
             </p>
           </div>
         </section>

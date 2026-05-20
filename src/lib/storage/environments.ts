@@ -1,8 +1,11 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
+import { buildFloorPlan } from "@/lib/scan/floor-plan";
+import { analyzeScanQuality } from "@/lib/scan/quality";
 import {
   EMPTY_BOUNDS,
   type MappedEnvironment,
   type PointCloudBounds,
+  type ScanQuality,
 } from "@/lib/types/environment";
 
 interface ScanDB extends DBSchema {
@@ -72,17 +75,27 @@ export async function getEnvironment(
 }
 
 export async function saveEnvironment(
-  input: Omit<MappedEnvironment, "id" | "createdAt" | "updatedAt" | "bounds"> & {
+  input: Omit<
+    MappedEnvironment,
+    "id" | "createdAt" | "updatedAt" | "bounds" | "quality" | "floorPlan"
+  > & {
     id?: string;
     bounds?: PointCloudBounds;
+    quality?: ScanQuality;
+    floorPlan?: MappedEnvironment["floorPlan"];
+    yawCoverage?: number;
   }
 ): Promise<MappedEnvironment> {
   const db = await getDb();
   const now = Date.now();
   const id = input.id ?? crypto.randomUUID();
   const existing = await db.get("environments", id);
-  const bounds =
-    input.bounds ?? computeBounds(input.points);
+  const bounds = input.bounds ?? computeBounds(input.points);
+  const quality =
+    input.quality ??
+    analyzeScanQuality(input.points, input.yawCoverage ?? 0);
+  const floorPlan =
+    input.floorPlan ?? buildFloorPlan(input.points, bounds);
 
   const record: MappedEnvironment = {
     id,
@@ -93,6 +106,8 @@ export async function saveEnvironment(
     pointCount: input.pointCount,
     points: input.points,
     bounds,
+    quality,
+    floorPlan,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };

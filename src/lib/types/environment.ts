@@ -8,6 +8,28 @@ export interface PointCloudBounds {
   max: [number, number, number];
 }
 
+export interface ScanQuality {
+  /** 0–100 — pronto para enviar à IA quando ≥ 65 */
+  score: number;
+  yawCoverage: number;
+  floorAreaM2: number;
+  heightM: number;
+  volumeM3: number;
+  pointDensity: number;
+  readyForAI: boolean;
+  issues: string[];
+  tips: string[];
+}
+
+export interface FloorPlanGrid {
+  cols: number;
+  rows: number;
+  cellSize: number;
+  origin: [number, number];
+  /** Ocupação 0–1 por célula, row-major */
+  cells: number[];
+}
+
 export interface MappedEnvironment {
   id: string;
   name: string;
@@ -18,8 +40,9 @@ export interface MappedEnvironment {
   depthMode: DepthMode;
   pointCount: number;
   bounds: PointCloudBounds;
-  /** Posições x,y,z intercaladas */
   points: Float32Array;
+  quality?: ScanQuality;
+  floorPlan?: FloorPlanGrid;
 }
 
 export interface ScanStats {
