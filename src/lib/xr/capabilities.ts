@@ -43,13 +43,23 @@ export async function detectXRCapabilities(): Promise<XRCapabilities> {
 }
 
 export function depthSupportLabel(caps: XRCapabilities): string {
+  const isIOS = /iPhone|iPad|iPod/i.test(caps.userAgent);
+
   if (!caps.isSecureContext) {
-    return "Requer HTTPS (ou localhost) para WebXR";
+    return "Requer HTTPS (link .vercel.app) para WebXR e câmera";
   }
-  if (!caps.webxr) return "WebXR indisponível neste navegador";
-  if (!caps.immersiveAr) return "AR imersivo não suportado";
+  if (!caps.webxr) {
+    return isIOS
+      ? "iPhone: use Safari 17+ ou teste Android+Chrome para AR completo"
+      : "WebXR indisponível — abra no Chrome (Android), não no app do Instagram";
+  }
+  if (!caps.immersiveAr) {
+    return isIOS
+      ? "AR imersivo limitado no iPhone; scanner usa câmera 2D"
+      : "AR imersivo não suportado — use Chrome Android atualizado";
+  }
   if (!caps.depthSensing) {
     return "AR disponível; profundidade pode não funcionar neste aparelho";
   }
-  return "AR + Depth API potencialmente disponíveis";
+  return "AR + Depth API potencialmente disponíveis (Chrome Android)";
 }

@@ -2,7 +2,11 @@
 import AFRAME from "aframe";
 import * as THREE from "three";
 import { DepthPointAccumulator } from "@/lib/xr/depth-sampler";
-import { requestARSessionWithDepth } from "@/lib/xr/request-ar-session";
+import {
+  requestARSessionWithDepth,
+  requestReferenceSpace,
+} from "@/lib/xr/request-ar-session";
+import { buildARSessionConfiguration } from "@/lib/xr/session-config";
 import type { DepthMode, ScanStats } from "@/lib/types/environment";
 
 const COMPONENT = "depth-mapper";
@@ -21,14 +25,32 @@ export interface DepthMapperAPI {
   onStats?: (stats: ScanStats) => void;
 }
 
+function patchWebXRSystem(sceneEl) {
+  const webxr = sceneEl.systems?.webxr;
+  if (!webxr) return;
+
+  webxr.sessionReferenceSpaceType = "local";
+  webxr.sessionConfiguration = buildARSessionConfiguration();
+
+  const overlay = document.getElementById("ar-dom-overlay");
+  if (overlay && webxr.data) {
+    const features = webxr.sessionConfiguration.optionalFeatures ?? [];
+    if (!features.includes("dom-overlay")) {
+      features.push("dom-overlay");
+    }
+    webxr.sessionConfiguration.optionalFeatures = features;
+    webxr.sessionConfiguration.domOverlay = { root: overlay };
+    overlay.classList.add("a-dom-overlay");
+  }
+}
+
 export function registerDepthMapper(): void {
   if (registered || typeof window === "undefined") return;
   registered = true;
 
-  // Componente A-Frame usa `this` dinâmico — tipagem relaxada
   AFRAME.registerComponent(COMPONENT, {
     schema: {
-      active: { type: "boolean", default: false },
+      useAFrameAR: { type: "boolean", default: true },
     },
 
     init() {
@@ -37,10 +59,9 @@ export function registerDepthMapper(): void {
       this.depthUsage = null;
       this.depthEnabled = false;
       this.session = null;
-      this.onStatus = undefined;
-      this.onStats = undefined;
+      this.referenceSpaceType = "";
 
-      const api: DepthMapperAPI = {
+      const api = {
         startScan: () => this.startScan(),
         stopScan: () => this.stopScan(),
         getStats: () => this.buildStats(),
@@ -48,37 +69,46 @@ export function registerDepthMapper(): void {
         getDepthMode: () => this.accumulator.depthMode,
       };
 
-      (this.el as HTMLElement & { depthMapperApi?: DepthMapperAPI }).depthMapperApi =
-        api;
+      this.el.depthMapperApi = api;
 
       this._onRender = this.onRender.bind(this);
       this.el.addEventListener("render", this._onRender);
     },
 
     async startScan() {
-      const sceneEl = this.el;
-      const renderer = sceneEl.renderer as THREE.WebGLRenderer & {
-        xr: THREE.WebXRManager;
-      };
+      const sceneEl = this.el.sceneEl || this.el;
+      const renderer = sceneEl.renderer;
 
-      this.setStatus("starting");
+      this.setStatus("starting", "Solicitando permissão da câmera AR…");
+      this.accumulator.reset();
+
+      patchWebXRSystem(sceneEl);
 
       try {
-        const { session, depthEnabled, depthUsage } =
-          await requestARSessionWithDepth();
+        if (this.data.useAFrameAR && typeof sceneEl.enterAR === "function") {
+          renderer.xr.enabled = true;
+          await sceneEl.enterAR();
+          this.session = renderer.xr.getSession();
+        } else {
+          await this.startScanManual(sceneEl, renderer);
+        }
 
-        this.session = session;
-        this.depthEnabled = depthEnabled;
-        this.depthUsage = depthUsage;
-        this.accumulator.reset();
+        if (!this.session) {
+          throw new Error("Sessão AR não iniciou. Tente Chrome no Android.");
+        }
 
-        await renderer.xr.setSession(session);
+        this.depthEnabled =
+          this.session.enabledFeatures?.includes("depth-sensing") ?? false;
+        this.depthUsage = this.depthEnabled
+          ? this.session.depthUsage ?? null
+          : null;
 
-        session.addEventListener("end", () => {
-          this.setStatus("stopped");
-        });
-
-        this.setStatus("scanning", depthEnabled ? "Depth API ativa" : "AR sem profundidade");
+        this.setStatus(
+          "scanning",
+          this.depthEnabled
+            ? "Câmera AR ativa · Depth API ligada"
+            : "Câmera AR ativa · sem Depth API neste aparelho"
+        );
       } catch (err) {
         const msg =
           err instanceof Error ? err.message : "Falha ao iniciar sessão AR";
@@ -87,34 +117,54 @@ export function registerDepthMapper(): void {
       }
     },
 
+    async startScanManual(sceneEl, renderer) {
+      const { session } = await requestARSessionWithDepth();
+
+      renderer.xr.enabled = true;
+      renderer.xr.setReferenceSpaceType("local");
+
+      const { space, type } = await requestReferenceSpace(session);
+      this.referenceSpaceType = type;
+
+      await renderer.xr.setSession(session);
+      renderer.xr.setReferenceSpace(space);
+
+      session.addEventListener("end", () => this.setStatus("stopped"));
+
+      this.session = session;
+    },
+
     stopScan() {
-      const renderer = this.el.renderer as THREE.WebGLRenderer;
-      const session = renderer.xr.getSession();
-      session?.end();
+      const sceneEl = this.el.sceneEl || this.el;
+      const renderer = sceneEl.renderer;
+      const session = renderer?.xr?.getSession?.();
+
+      if (session) {
+        session.end();
+      } else if (typeof sceneEl.exitVR === "function" && sceneEl.is("vr-mode")) {
+        sceneEl.exitVR();
+      }
+
       this.setStatus("stopped");
     },
 
     onRender() {
       if (this.status !== "scanning") return;
 
-      const renderer = this.el.renderer as THREE.WebGLRenderer & {
-        xr: THREE.WebXRManager;
-      };
+      const sceneEl = this.el.sceneEl || this.el;
+      const renderer = sceneEl.renderer;
       const frame = renderer.xr.getFrame();
       const refSpace = renderer.xr.getReferenceSpace();
-      const camEntity = this.el.sceneEl?.camera;
-      const camera = camEntity?.getObject3D?.("camera") as
-        | THREE.PerspectiveCamera
-        | undefined;
+      const camEntity = sceneEl.camera;
+      const camera = camEntity?.getObject3D?.("camera");
+
       if (!camera) {
         this.emitStats();
         return;
       }
 
-      if (!frame || !refSpace || !camera) {
-        if (this.status === "scanning") {
-          this.accumulator.sampleCameraFallback(camera);
-        }
+      if (!frame || !refSpace) {
+        this.accumulator.sampleCameraFallback(camera);
         this.emitStats();
         return;
       }
@@ -139,7 +189,7 @@ export function registerDepthMapper(): void {
       this.emitStats();
     },
 
-    buildStats(): ScanStats {
+    buildStats() {
       return {
         pointCount: this.accumulator.pointCount,
         depthMode: this.accumulator.depthMode,
@@ -154,7 +204,7 @@ export function registerDepthMapper(): void {
       this.el.emit("depth-mapper-stats", { stats });
     },
 
-    setStatus(status: ScanStatus, message?: string) {
+    setStatus(status, message) {
       this.status = status;
       this.onStatus?.(status, message);
       this.el.emit("depth-mapper-status", { status, message });
@@ -169,13 +219,10 @@ export function registerDepthMapper(): void {
   } as Record<string, unknown>);
 }
 
-export function getDepthMapperApi(
-  sceneEl: HTMLElement | null
-): DepthMapperAPI | null {
+export function getDepthMapperApi(sceneEl) {
   if (!sceneEl) return null;
+  if (sceneEl.depthMapperApi) return sceneEl.depthMapperApi;
+
   const mapper = sceneEl.querySelector("[depth-mapper]");
-  return (
-    (mapper as HTMLElement & { depthMapperApi?: DepthMapperAPI })
-      ?.depthMapperApi ?? null
-  );
+  return mapper?.depthMapperApi ?? null;
 }
